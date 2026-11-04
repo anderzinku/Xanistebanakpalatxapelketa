@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="eu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Oiartzungo Pala Txapelketa</title>
+<style>
+:root{--g:#17623b;--d:#0d3a24;--l:#e3f3e8;--b:#c6e6d0}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:#f4f9f6;color:#1e293b}
+header{background:var(--d);color:#fff;padding:.7rem 1rem;position:sticky;top:0;z-index:5}
+h1{font:700 1.15rem Georgia,serif;margin:0 0 .4rem}nav{display:flex;gap:.3rem;flex-wrap:wrap}
+button,select,input,textarea{font:inherit;border:1px solid var(--b);border-radius:.6rem;padding:.35rem .6rem;background:#fff}
+button{cursor:pointer;background:var(--g);color:#fff;border:0;font-weight:600}button.o{background:#fff;color:var(--g);border:1px solid var(--b)}
+nav button{background:transparent;color:#cfeadb}nav button.on{background:#fff;color:var(--d)}
+main{max-width:980px;margin:auto;padding:1rem}.c{background:#fff;border:1px solid var(--b);border-radius:1rem;padding:.9rem;margin:0 0 1rem;overflow-x:auto}
+h2{font:700 1.2rem Georgia,serif;color:var(--d);margin:.2rem 0 .7rem}h3{margin:.2rem 0 .5rem;color:var(--g)}
+.p{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}.p button{background:#fff;color:var(--g);border:1px solid var(--b)}.p button.on{background:var(--g);color:#fff}
+table{border-collapse:collapse;width:100%}th,td{padding:.35rem .5rem;text-align:center;border-bottom:1px solid var(--l)}th{font-size:12px;color:#64748b}td:nth-child(2),th:nth-child(2){text-align:left}
+.q td:nth-child(1){font-weight:800;color:var(--g)}
+.r{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.4rem 0;border-bottom:1px solid var(--l)}.r .t{font-weight:700;min-width:3.4rem;color:var(--g)}
+input[type=number]{width:3.4rem;text-align:center}.bd{font-size:11px;background:var(--l);color:var(--d);border-radius:9px;padding:.1rem .5rem;font-weight:700}
+.off{background:#fef2f2;color:#991b1b;padding:.5rem;border-radius:.6rem}.m{color:#64748b;font-size:13px}
+.br{display:flex;gap:1.2rem;min-width:max-content}.col{display:flex;flex-direction:column;justify-content:space-around;gap:.8rem;min-width:200px}
+.mc{border:1px solid var(--b);border-radius:.7rem;overflow:hidden}.tr{display:flex;justify-content:space-between;gap:.4rem;padding:.35rem .6rem;align-items:center}.tr+.tr{border-top:1px solid var(--l)}.w{background:var(--l);font-weight:800}
+.warn{background:#fffbeb;border:1px solid #f59e0b;padding:.7rem;border-radius:.7rem;margin-bottom:1rem}
+</style></head><body>
+<header><h1>🏓 Oiartzungo Pala Txapelketa</h1><nav id="nav"></nav></header>
+<main id="app"></main>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import{getFirestore,collection,doc,onSnapshot,setDoc,deleteDoc,writeBatch}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+// ▼ PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE NUEVO ▼
+const CFG={apiKey:"PEGA_AQUI",authDomain:"",projectId:"",storageBucket:"",messagingSenderId:"",appId:""};
+const CATS=['Gazteak','Neskak','Herrikoia','Irekia'],DN=['Igandea','Astelehena','Asteartea','Asteazkena','Osteguna','Ostirala','Larunbata'];
+let T={},M={},D={},C={},admin=false,tab='sailkapena',cat=CATS[0],f='',past=false,db,auth;
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const p2=n=>String(n).padStart(2,'0'),tn=id=>T[id]?.name||'—',today=()=>new Date().toISOString().slice(0,10);
+const fd=d=>{const x=new Date(d+'T12:00');return DN[x.getDay()]+' '+p2(x.getDate())+'/'+p2(x.getMonth()+1)};
+const played=m=>Number.isInteger(m.sa)&&Number.isInteger(m.sb)&&m.sa!==m.sb,shown=m=>Number.isInteger(m.sa)&&Number.isInteger(m.sb);
+const put=(c,id,d)=>setDoc(doc(db,c,id),d,{merge:true}),del=(c,id)=>deleteDoc(doc(db,c,id));
+async function batch(ops){for(let i=0;i<ops.length;i+=400){const b=writeBatch(db);ops.slice(i,i+400).forEach(([k,c,id,d])=>k=='s'?b.set(doc(db,c,id),d,{merge:true}):b.delete(doc(db,c,id)));await b.commit()}}
+// ---- logika ----
+const K=(c,r,i)=>M[`k_${c}_${r}_${i}`],R=c=>1+Math.max(-1,...Object.values(M).filter(m=>m.cat==c&&m.phase=='k'&&Number.isInteger(m.r)).map(m=>m.r));
+function teams(m){if(m.phase!='k')return[m.a,m.b];if(m.r==='P'){const s=R(m.cat)-2;return[lose(K(m.cat,s,0)),lose(K(m.cat,s,1))]}
+ if(m.r===0)return[m.a||null,m.b||null];return[win(K(m.cat,m.r-1,2*m.i)),win(K(m.cat,m.r-1,2*m.i+1))]}
+function win(m){if(!m)return null;const[a,b]=teams(m);if(played(m))return m.sa>m.sb?a:b;return m.r===0&&(a?!b:b)?(a||b):null}
+function lose(m){if(!m||!played(m))return null;const[a,b]=teams(m);return m.sa>m.sb?b:a}
+const all=()=>Object.entries(M).map(([id,m])=>({id,...m,t:teams(m)}));
+function table(c,g){const R={},ts=Object.entries(T).filter(([,t])=>t.cat==c&&t.group==g).map(([id,t])=>R[id]={id,n:t.name,pj:0,p:0,f:0,c:0});
+ Object.values(M).filter(m=>m.phase=='g'&&m.cat==c&&m.group==g&&played(m)).forEach(m=>{const a=R[m.a],b=R[m.b];if(!a||!b)return;a.pj++;b.pj++;a.f+=m.sa;a.c+=m.sb;b.f+=m.sb;b.c+=m.sa;(m.sa>m.sb?a:b).p++});
+ ts.forEach(r=>r.d=r.f-r.c);return ts.sort((x,y)=>y.p-x.p||y.d-x.d||x.n.localeCompare(y.n))}
+const groups=c=>[...new Set(Object.values(T).filter(t=>t.cat==c&&t.group).map(t=>t.group))].sort();
+const slotsFor=d=>{let t=D[d].start=='15:00'?900:990,o=[];for(;t<=1280;t+=40)o.push(p2(t/60|0)+':'+p2(t%60));return o};
+const sc=(m,ad)=>ad?`<input type="number" min="0" max="30" value="${m.sa??''}" onchange="A.sc('${m.id}','sa',this.value)"> - <input type="number" min="0" max="30" value="${m.sb??''}" onchange="A.sc('${m.id}','sb',this.value)">`:(shown(m)?`<b>${m.sa} - ${m.sb}</b>`:'<span class="m">—</span>');
+const pills=(l,cur,fn)=>`<div class="p">${l.map(x=>`<button class="${x==cur?'on':''}" onclick="${fn}('${x}')">${x}</button>`).join('')}</div>`;
+// ---- ekintzak ----
+const A=window.A={tab:t=>{tab=t;render()},cat:c=>{cat=c;render()},past:()=>{past=!past;render()},f:v=>{f=v.toLowerCase();render();const i=$('#f');i.focus();i.setSelectionRange(99,99)},
+ sc:(id,k,v)=>put('matches',id,{[k]:v===''?null:Math.max(0,Math.min(30,+v))}),
+ login:()=>signInWithEmailAndPassword(auth,$('#em').value,$('#pw').value).catch(()=>alert('Datu okerrak')),out:()=>signOut(auth),
+ addT:async()=>{const n=$('#tn').value.split('\n').map(s=>s.trim()).filter(Boolean),c=$('#tc').value;await batch(n.map((name,i)=>['s','teams','t'+Date.now().toString(36)+i,{name,cat:c,group:''}]));$('#tn').value=''},
+ delT:id=>confirm('Bikotea ezabatu? Taldeak berriz zozkatu beharko dira.')&&del('teams',id),
+ q:(c,v)=>put('config','main',{q:{[c]:+v}}),p:(c,v)=>put('config','main',{p:{[c]:v}}),
+ draw:async c=>{const ts=Object.keys(T).filter(i=>T[i].cat==c);if(ts.length<3)return alert('Gutxienez 3 bikote behar dira.');
+  if(Object.values(M).some(m=>m.cat==c&&shown(m))&&!confirm('Emaitzak badaude eta galduko dira. Jarraitu?'))return;
+  const s=ts.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(x=>x[1]),g=Math.max(1,Math.round(s.length/3.5)),gs=Array.from({length:g},()=>[]);s.forEach((id,i)=>gs[i%g].push(id));
+  const ops=Object.keys(M).filter(id=>M[id].cat==c).map(id=>['d','matches',id]);
+  gs.forEach((q,gi)=>{const L=String.fromCharCode(65+gi);q.forEach(id=>ops.push(['s','teams',id,{group:L}]));q.forEach((a,x)=>q.slice(x+1).forEach(b=>ops.push(['s','matches',`g_${c}_${L}_${a}_${b}`,{cat:c,phase:'g',group:L,a,b}])))});
+  await batch(ops)},
+ kn:async c=>{const n=+(C.main?.q?.[c]||2),gl=groups(c);if(!gl.length)return alert('Lehenik taldeak zozkatu.');
+  const tb=gl.map(g=>table(c,g)),sd=[];for(let p=0;p<n;p++)sd.push(...tb.map(t=>t[p]).filter(Boolean).sort((x,y)=>y.p-x.p||y.d-x.d).map(r=>r.id));
+  if(sd.length<2)return alert('Ez dago bikote nahikorik.');let S=2;while(S<sd.length)S*=2;let o=[1];while(o.length<S)o=o.flatMap(x=>[x,2*o.length+1-x]);
+  const ops=Object.keys(M).filter(id=>M[id].cat==c&&M[id].phase=='k').map(id=>['d','matches',id]),rs=Math.log2(S);
+  for(let r=0;r<rs;r++)for(let i=0;i<S/2**(r+1);i++){const d={cat:c,phase:'k',r,i};if(!r){const a=sd[o[2*i]-1],b=sd[o[2*i+1]-1];if(a)d.a=a;if(b)d.b=b}ops.push(['s','matches',`k_${c}_${r}_${i}`,d])}
+  if(C.main?.p?.[c]&&rs>1)ops.push(['s','matches',`k_${c}_P`,{cat:c,phase:'k',r:'P',i:0}]);await batch(ops)},
+ addD:async()=>{const a=$('#fr').value,b=$('#to').value,st=$('#st').value;if(!a||!b)return;const ops=[];for(let x=new Date(a+'T12:00');x<=new Date(b+'T12:00');x.setDate(x.getDate()+1)){const d=x.toISOString().slice(0,10);if(x.getDay()%6&&!D[d])ops.push(['s','days',d,{start:st}])}await batch(ops)},
+ dd:async d=>{if(!confirm('Eguna ezabatu?'))return;await batch([['d','days',d],...Object.keys(M).filter(i=>M[i].day==d).map(i=>['s','matches',i,{day:null,slot:null}])])},
+ day:(d,k,v)=>put('days',d,{[k]:v}),
+ ep:d=>{const pl=new Set(all().filter(m=>m.day==d).flatMap(m=>m.t)),u={};Object.values(D).forEach(x=>x.ep&&(u[x.ep]=(u[x.ep]||0)+1));
+  const c=Object.keys(T).filter(t=>!pl.has(t));if(!c.length)return;const mn=Math.min(...c.map(t=>u[t]||0)),p=c.filter(t=>(u[t]||0)==mn);put('days',d,{ep:p[Math.floor(Math.random()*p.length)]})},
+ as:async(d,s,id)=>{const o=all().find(m=>m.day==d&&m.slot==s),ops=[];if(o)ops.push(['s','matches',o.id,{day:null,slot:null}]);if(id)ops.push(['s','matches',id,{day:d,slot:s}]);await batch(ops)},
+ auto:async()=>{const from=$('#af').value||today(),ds=Object.keys(D).sort(),cnt={},ms=all(),by={},ops=[];
+  const sum=m=>m.t.reduce((s,t)=>s+(cnt[t]||0),0),df=(a,b)=>(new Date(b)-new Date(a))/864e5;
+  ms.forEach(m=>{if(m.day){(by[m.day]??=new Set());m.t.forEach(t=>{if(t){by[m.day].add(t);cnt[t]=(cnt[t]||0)+1}})}});
+  let pend=ms.filter(m=>!m.day&&m.t[0]&&m.t[1]&&!played(m));
+  ds.forEach((d,i)=>{if(d<from||D[d].off)return;const pl=by[d]??=new Set(),nb=new Set([...(i&&df(ds[i-1],d)==1?by[ds[i-1]]||[]:[]),...(df(d,ds[i+1])==1?by[ds[i+1]]||[]:[])]),tc={},used=new Set(ms.filter(m=>m.day==d).map(m=>m.slot));
+   slotsFor(d).forEach(s=>{if(used.has(s))return;const ok=pend.filter(m=>m.t.every(t=>!pl.has(t)&&!nb.has(t)&&t!=D[d].ep));if(!ok.length)return;
+    ok.sort((a,b)=>(tc[a.cat]||0)-(tc[b.cat]||0)||sum(a)-sum(b));const m=ok[0];m.t.forEach(t=>{pl.add(t);cnt[t]=(cnt[t]||0)+1});tc[m.cat]=(tc[m.cat]||0)+1;pend=pend.filter(x=>x!==m);ops.push(['s','matches',m.id,{day:d,slot:s}])})});
+  await batch(ops);alert(`${ops.length} partida esleitu dira. Zain: ${pend.length}.`)}};
+// ---- bistak ----
+function vS(){const gl=groups(cat);let h=pills(CATS,cat,'A.cat');
+ if(!gl.length){const n=Object.values(T).filter(t=>t.cat==cat);return h+`<div class="c"><h2>${cat}: partaideak (${n.length})</h2>${n.map(t=>esc(t.name)).join(' · ')||'<span class="m">Oraindik ez dago bikoterik.</span>'}<p class="m">Taldeak zozkatu gabe daude.</p></div>`}
+ return h+gl.map(g=>{const tb=table(cat,g),ms=all().filter(m=>m.phase=='g'&&m.cat==cat&&m.group==g),q=+(C.main?.q?.[cat]||2);
+  return `<div class="c"><h2>${cat} · ${g} taldea</h2><table class="q"><tr><th>#</th><th>Bikotea</th><th>Jok.</th><th>Pun.</th><th>Alde</th><th>Aurka</th><th>Dif.</th></tr>${tb.map((r,i)=>`<tr style="${i<q?'background:#f3faf5':''}"><td>${i+1}</td><td>${esc(r.n)}</td><td>${r.pj}</td><td><b>${r.p}</b></td><td>${r.f}</td><td>${r.c}</td><td>${r.d>0?'+':''}${r.d}</td></tr>`).join('')}</table>
+  <h3 style="margin-top:1rem">Partidak</h3>${ms.map(m=>`<div class="r"><span>${esc(tn(m.a))} <span class="m">vs</span> ${esc(tn(m.b))}</span>${sc(m,admin)}<span class="m">${m.day?fd(m.day)+' · '+m.slot:'Data gabe'}</span></div>`).join('')}</div>`}).join('')}
+function vE(){const ds=Object.keys(D).sort().filter(d=>past||d>=today()),pn=all().filter(m=>!m.day&&m.t[0]&&m.t[1]&&!played(m));
+ let h=`<div class="c"><input id="f" placeholder="Bilatu bikotea edo kategoria..." value="${esc(f)}" oninput="A.f(this.value)"> <button class="o" onclick="A.past()">${past?'Gaurtik aurrera':'Pasatakoak ere'}</button></div>`;
+ if(admin)h+=`<div class="c"><h3>Antolaketa</h3>Egunak sortu (astelehenetik ostiralera): <input type="date" id="fr"> – <input type="date" id="to"> <select id="st"><option>16:30</option><option>15:00</option></select> <button onclick="A.addD()">Sortu</button><br><br>
+  Auto-bete hemendik: <input type="date" id="af" value="${today()}"> <button onclick="A.auto()">Auto-bete</button> <span class="m">Esleitu gabeko partidak: ${pn.length}</span></div>`;
+ if(!ds.length)h+='<div class="c m">Ez dago egunik antolatuta.</div>';
+ return h+ds.map(d=>{const x=D[d],ms=all().filter(m=>m.day==d),pl=new Set(ms.flatMap(m=>m.t)),ok=m=>!f||(tn(m.t[0])+' '+tn(m.t[1])+' '+m.cat).toLowerCase().includes(f);
+  let b='';if(x.off)b=`<div class="off">Frontoia okupatuta${x.note?': '+esc(x.note):''}</div>`;else b=slotsFor(d).map(s=>{const m=ms.find(m=>m.slot==s);if(!admin&&(!m||!ok(m)))return'';
+   const o=pn.filter(p=>p.t.every(t=>!pl.has(t)&&t!=x.ep)).map(p=>`<option value="${p.id}">${p.cat} · ${esc(tn(p.t[0]))} vs ${esc(tn(p.t[1]))}</option>`).join('');
+   return `<div class="r"><span class="t">${s}</span>${admin?`<select onchange="A.as('${d}','${s}',this.value)"><option value="">Hutsik</option>${m?`<option value="${m.id}" selected>${m.cat} · ${esc(tn(m.t[0]))} vs ${esc(tn(m.t[1]))}</option>`:''}${o}</select>${m?sc(m,true):''}`:m?`<span class="bd">${m.cat}${m.group?' '+m.group:''}</span><span>${esc(tn(m.t[0]))} <span class="m">vs</span> ${esc(tn(m.t[1]))}</span>${sc(m,false)}`:''}</div>`}).join('');
+  return `<div class="c"><h2>${fd(d)}${d==today()?' · gaur':''}</h2><div class="m">Epailea: <b>${x.ep?esc(tn(x.ep)):'zozkatu gabe'}</b> ${admin?`<button class="o" onclick="A.ep('${d}')">Zozkatu</button> Hasiera <select onchange="A.day('${d}','start',this.value)"><option ${x.start!='15:00'?'selected':''}>16:30</option><option ${x.start=='15:00'?'selected':''}>15:00</option></select> <label><input type="checkbox" ${x.off?'checked':''} onchange="A.day('${d}','off',this.checked)"> Okupatuta</label> <input value="${esc(x.note||'')}" placeholder="Oharra" onchange="A.day('${d}','note',this.value)" size="12"> <button class="o" onclick="A.dd('${d}')">✕</button>`:''}</div>${b}</div>`}).join('')}
+function vK(){const R_=R(cat);let h=pills(CATS,cat,'A.cat');if(R_<1)return h+'<div class="c m">Kanporaketa oraindik ez da sortu.</div>';
+ const ms=all().filter(m=>m.cat==cat&&m.phase=='k'),nm=n=>n==1?'Finala':n==2?'Finalerdiak':n==4?'Final-laurdenak':n*2+' bikote',
+ card=m=>{const[a,b]=m.t,w=played(m)?(m.sa>m.sb?a:b):null,row=(t,k)=>`<div class="tr ${w&&w==t?'w':''}"><span>${t?esc(tn(t)):'—'}</span>${admin&&a&&b?`<input type="number" min="0" max="30" value="${m[k]??''}" onchange="A.sc('${m.id}','${k}',this.value)">`:`<b>${m[k]??''}</b>`}</div>`;
+  return `<div class="mc">${row(a,'sa')}${row(b,'sb')}${m.day?`<div class="m" style="padding:.2rem .6rem">${fd(m.day)} · ${m.slot}</div>`:''}</div>`};
+ let cols='';for(let r=0;r<R_;r++){const L=ms.filter(m=>m.r===r).sort((x,y)=>x.i-y.i);cols+=`<div class="col"><h3>${nm(L.length)}</h3>${L.map(card).join('')}</div>`}
+ const fm=K(cat,R_-1,0),ch=fm&&win(fm),p3=K(cat,'P');
+ return h+`<div class="c"><div class="br">${cols}</div></div>${p3?`<div class="c"><h3>3.-4. postua</h3>${card({id:p3.id||`k_${cat}_P`,...p3,t:teams(p3)})}</div>`:''}${ch?`<div class="c"><h2>🏆 ${cat}: ${esc(tn(ch))}</h2></div>`:''}`}
+const vR=()=>`<div class="c"><h2>Arautegia</h2><ul><li>Lau kategoria: Gazteak, Neskak, Herrikoia eta Irekia.</li><li>Lehen fasea taldeka da (3-4 bikote talde bakoitzean), zozketaz osatuak. Taldeko bikote guztiek elkarren aurka jokatzen dute.</li><li>Partidak 30 tantora dira.</li><li>Garaipen bakoitzak puntu 1 ematen du; porrotak ez du punturik. Berdinketa badago, tanto-aldeak (alde – aurka) erabakiko du.</li><li>Talde bakoitzeko 2 edo 3 bikote sailkatzen dira kanporaketara, kategoriaren arabera. Kanporaketak zuzenekoak dira.</li><li>Partidak astelehenetik ostiralera jokatzen dira Kontzejupean. Eguneko epailea bikoteen artean zozkatzen da, eta egun horretan ez du partidarik jokatzen.</li><li>Ordua partidu bakoitzean bikoteek adostu behar dute antolakuntzak emandako egunean. Aldaketak antolatzaileari jakinarazi.</li></ul></div>`;
+function vA(){if(!db)return'<div class="warn">Firebase ez dago konfiguratuta. Itsatsi proiektuaren datuak <b>CFG</b>-n.</div>';
+ if(!admin)return`<div class="c"><h2>Antolatzailea</h2><input id="em" type="email" placeholder="Posta elektronikoa"> <input id="pw" type="password" placeholder="Pasahitza"> <button onclick="A.login()">Sartu</button></div>`;
+ return`<div class="c"><button class="o" onclick="A.out()">Irten</button></div><div class="c"><h2>Bikoteak gehitu</h2><select id="tc">${CATS.map(c=>`<option>${c}</option>`).join('')}</select><br><br><textarea id="tn" rows="5" style="width:100%" placeholder="Bikote bat lerroko (Izena1 / Izena2)"></textarea><br><br><button onclick="A.addT()">Gehitu</button></div>`+
+ CATS.map(c=>{const ts=Object.entries(T).filter(([,t])=>t.cat==c).sort((a,b)=>a[1].name.localeCompare(b[1].name));return`<div class="c"><h2>${c} (${ts.length})</h2>
+ <button onclick="A.draw('${c}')">Taldeak zozkatu</button> Sailkatzen dira taldeko: <select onchange="A.q('${c}',this.value)">${[1,2,3,4].map(n=>`<option ${n==(C.main?.q?.[c]||2)?'selected':''}>${n}</option>`).join('')}</select> <label><input type="checkbox" ${C.main?.p?.[c]?'checked':''} onchange="A.p('${c}',this.checked)"> 3.-4. partida</label> <button onclick="A.kn('${c}')">Kanporaketa sortu</button>
+ <div style="margin-top:.6rem">${ts.map(([id,t])=>`<span class="bd" style="display:inline-block;margin:.15rem">${esc(t.name)}${t.group?' ('+t.group+')':''} <a href="#" onclick="A.delT('${id}');return false">✕</a></span>`).join('')}</div></div>`}).join('')}
+const V={sailkapena:vS,egutegia:vE,kanporaketak:vK,arautegia:vR,antolaketa:vA};
+function render(){$('#nav').innerHTML=[['sailkapena','Sailkapena'],['egutegia','Egutegia'],['kanporaketak','Kanporaketak'],['arautegia','Arautegia'],['antolaketa',admin?'Antolaketa ✓':'Antolaketa']].map(([k,l])=>`<button class="${k==tab?'on':''}" onclick="A.tab('${k}')">${l}</button>`).join('');$('#app').innerHTML=V[tab]()}
+const rr=()=>{if(document.activeElement?.matches('textarea,#em,#pw,#fr,#to,#af,#f,input[placeholder=Oharra]'))return;render()};
+try{if(CFG.apiKey.startsWith('PEGA'))throw 0;const app=initializeApp(CFG);db=getFirestore(app);auth=getAuth(app);
+ onAuthStateChanged(auth,u=>{admin=!!u;render()});
+ [['teams',v=>T=v],['matches',v=>M=v],['days',v=>D=v],['config',v=>C=v]].forEach(([c,set])=>onSnapshot(collection(db,c),s=>{const o={};s.forEach(d=>o[d.id]=d.data());set(o);rr()}))}catch(e){db=null}
+render();
+</script></body></html>
